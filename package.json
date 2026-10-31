@@ -1,0 +1,21 @@
+{
+  "name": "fouad-campaign",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Buildless HTML, CSS and JavaScript campaign with a Cloudflare Worker backend.",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "dev": "node --experimental-sqlite scripts/local.mjs",
+    "start": "node --experimental-sqlite scripts/local.mjs",
+    "check": "node scripts/check.mjs",
+    "test": "node --experimental-sqlite --test tests/payment.test.mjs tests/local.test.mjs",
+    "build": "node scripts/check.mjs",
+    "cf:dev": "npx wrangler@4.92.0 dev",
+    "deploy": "npx wrangler@4.92.0 deploy",
+    "db:local": "npx wrangler@4.92.0 d1 migrations apply DB --local",
+    "db:remote": "npx wrangler@4.92.0 d1 migrations apply DB --remote"
+  }
+}

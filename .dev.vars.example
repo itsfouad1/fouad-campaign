@@ -1,0 +1,6 @@
+# Copy to .dev.vars for local development. Never commit the real file.
+# Set a unique admin password of at least 16 characters.
+ADMIN_PASSWORD=""
+PAYUNIT_MODE="test"
+PAYUNIT_API_KEY=""
+PAYUNIT_WEBHOOK_SECRET=""
