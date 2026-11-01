@@ -11,7 +11,7 @@
     "dev": "node --experimental-sqlite scripts/local.mjs",
     "start": "node --experimental-sqlite scripts/local.mjs",
     "check": "node scripts/check.mjs",
-    "test": "node --experimental-sqlite --test tests/payment.test.mjs tests/local.test.mjs",
+    "test": "node --experimental-sqlite --test tests/payment.test.mjs tests/local.test.mjs tests/admin-tools.test.mjs",
     "build": "node scripts/check.mjs",
     "cf:dev": "npx wrangler@4.92.0 dev",
     "deploy": "npx wrangler@4.92.0 deploy",

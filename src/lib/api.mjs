@@ -138,6 +138,7 @@ export async function handleApi(req, env) {
           (paymentMode(env) === "live" || admin),
         mode: paymentMode(env),
         admin,
+        ...(admin ? {paymentSetup:{configured:paymentReady(env),mode:paymentMode(env)}} : {}),
       });
     }
     if (p === "/api/admin/session") {

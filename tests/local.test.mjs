@@ -86,6 +86,10 @@ test("zero-install local server: assets, migrations, auth, persistence, updates 
     });
     assert.equal(login.status, 200);
     const cookie = login.headers.get("set-cookie").split(";")[0];
+    assert.equal(initial.paymentSetup, undefined, 'gateway setup details are only returned to admins');
+    const dashboard=await (await request('/api/campaign','GET',undefined,cookie)).json();
+    assert.deepEqual(dashboard.paymentSetup,{configured:false,mode:'test'});
+
     assert.equal(
       (await request("/api/admin/config", "PUT", initial.config)).status,
       401,

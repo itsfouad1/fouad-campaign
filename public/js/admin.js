@@ -1,4 +1,6 @@
 import { h, Fragment, icon, mount } from "./dom.js";
+import { hasChanges, hasPostDraft } from "./admin-tools.js";
+import { readinessCard, budgetCard, previewDialog } from "./admin-widgets.js";
 const ArrowUpLeft = icon("ArrowUpLeft"),
   ArrowUpRight = icon("ArrowUpRight"),
   Check = icon("Check"),
@@ -46,6 +48,9 @@ function Admin() {
     post,
     publicConsent,
     uploadKind,
+    savedConfig,
+    paymentSetup,
+    previewOpen,
   } = view.state;
   async function api(path, options = {}) {
     const r = await fetch(path, options);
@@ -64,7 +69,11 @@ function Admin() {
       setConfigured(s.configured);
       if (s.admin) {
         const c = await api("/api/campaign");
-        setConfig(c.config);
+        if (!view.state.config || !hasChanges(view.state.config, view.state.savedConfig)) {
+          setConfig(c.config);
+          setSavedConfig(structuredClone(c.config));
+        }
+        setPaymentSetup(c.paymentSetup || {});
         setTotal(c.total);
         setUpdates(c.updates);
         const d = await api("/api/admin/donations");
@@ -98,9 +107,12 @@ function Admin() {
   });
   async function save() {
     await action(async () => {
-      const r = await api("/api/admin/config", opts("PUT", config));
-      setConfig(r.config);
-      setNotice("تم حفظ التغييرات. تظهر مباشرة على صفحة الحملة.");
+      const submitted = structuredClone(view.state.config);
+      const r = await api("/api/admin/config", opts("PUT", submitted));
+      const editedWhileSaving = hasChanges(view.state.config, submitted);
+      if (!editedWhileSaving) setConfig(r.config);
+      setSavedConfig(structuredClone(r.config));
+      setNotice(editedWhileSaving ? "تم حفظ النسخة المرسلة. لديك تعديلات أحدث لم تُحفظ بعد." : "تم حفظ التغييرات. تظهر مباشرة على صفحة الحملة.");
     });
   }
   function list(key, extra) {
@@ -111,6 +123,20 @@ function Admin() {
       key,
       config[key].map((x, n) => (n === i ? { ...x, [field]: value } : x)),
     );
+  }
+  const dirty = hasChanges(config, savedConfig);
+  function sendPreview() {
+    view.refs.previewDialog.current?.querySelector('iframe')?.contentWindow?.postMessage({type:'campaign-preview',config:view.state.config,total:view.state.total},location.origin);
+  }
+  function discard() {
+    if (dirty && confirm('تجاهل التعديلات الحالية والرجوع لآخر نسخة محفوظة؟')) {
+      setConfig(structuredClone(savedConfig));
+      setError(''); setNotice('تم الرجوع إلى آخر نسخة محفوظة.');
+    }
+  }
+  async function logout() {
+    if ((dirty || hasPostDraft(post)) && !confirm('لديك تعديلات غير محفوظة أو تحديث لم يُنشر. تسجيل الخروج وتجاهلها؟')) return;
+    await action(async()=>{await api('/api/admin/session',{method:'DELETE'});setAuthorized(false);setConfig(null);setSavedConfig(null);setPost({titleAr:'',titleEn:'',bodyAr:'',bodyEn:''});});
   }
   const alert = /* @__PURE__ */ h(
     Fragment,
@@ -130,12 +156,13 @@ function Admin() {
     view.initialized = true;
     queueMicrotask(load);
   }
-  if (loading || (authorized && !config))
+  if (loading)
     return /* @__PURE__ */ h(
       "main",
       { className: "admin-wrap" },
       /* @__PURE__ */ h("p", null, "جاري تحميل لوحة الإدارة…"),
     );
+  if (authorized && !config) return h('main',{className:'admin-wrap'},h('section',{className:'admin-card'},h('h2',null,'تعذّر تحميل بيانات الحملة'),alert,h('button',{className:'button outline',onClick:load},'إعادة المحاولة')));
   if (!authorized)
     return /* @__PURE__ */ h(
       "main",
@@ -237,6 +264,7 @@ function Admin() {
       /* @__PURE__ */ h(
         "div",
         { className: "admin-actions" },
+        h('button',{type:'button',className:'button outline small',onClick:()=>setPreviewOpen(true)},'معاينة التعديلات'),
         /* @__PURE__ */ h(
           "a",
           { className: "button outline small", href: "/", target: "_blank" },
@@ -248,11 +276,7 @@ function Admin() {
           {
             className: "icon-button",
             "aria-label": "تسجيل الخروج",
-            onClick: () =>
-              action(async () => {
-                await api("/api/admin/session", { method: "DELETE" });
-                setAuthorized(false);
-              }),
+            onClick: logout,
           },
           /* @__PURE__ */ h(LogOut, { size: 17 }),
         ),
@@ -280,6 +304,7 @@ function Admin() {
         /* @__PURE__ */ h("strong", null, config.remainingHours),
       ),
     ),
+    readinessCard(config, paymentSetup, nextTab=>{setTab(nextTab);document.querySelector('.admin-tabs')?.scrollIntoView({block:'start'});}),
     /* @__PURE__ */ h(
       "div",
       { className: "admin-tabs" },
@@ -446,6 +471,7 @@ function Admin() {
           }),
           "فتح استقبال الدعم بعد توثيق الرسوم وتجهيز وسيلة الدفع",
         ),
+        budgetCard(config),
         /* @__PURE__ */ h("h3", null, "تفصيل الاحتياجات"),
         config.budgets.map((x, i) =>
           /* @__PURE__ */ h(
@@ -899,12 +925,13 @@ function Admin() {
         ),
       ),
     ["content", "support", "files"].includes(tab) &&
-      /* @__PURE__ */ h(
-        "button",
-        { className: "button primary", disabled: busy, onClick: save },
-        /* @__PURE__ */ h(Save, { size: 18 }),
-        busy ? "جاري الحفظ…" : "حفظ التغييرات",
-      ),
+      h('div',{className:'admin-savebar'},
+        h('span',{role:'status'},dirty?'● لديك تعديلات غير محفوظة':'✓ كل التعديلات محفوظة'),
+        h('div',{className:'admin-actions'},
+          h('button',{type:'button',className:'button outline small',onClick:()=>setPreviewOpen(true)},'معاينة'),
+          dirty && h('button',{type:'button',className:'text-button',disabled:busy,onClick:discard},'تجاهل التعديلات'),
+          h('button',{type:'button',className:'button primary',disabled:busy||!dirty,onClick:save},h(Save,{size:18}),busy?'جاري الحفظ…':'حفظ التغييرات'))),
+    previewOpen && previewDialog(view.refs.previewDialog,()=>setPreviewOpen(false),sendPreview),
   );
 }
 
@@ -917,6 +944,9 @@ const view = mount(
     password: "",
     tab: "content",
     config: null,
+    savedConfig: null,
+    paymentSetup: {},
+    previewOpen: false,
     updates: [],
     donations: [],
     total: { amount: 0, count: 0 },
@@ -931,8 +961,15 @@ const view = mount(
   () => {
     document.documentElement.lang = "ar";
     document.documentElement.dir = "rtl";
+    const dialog=view.refs.previewDialog.current;
+    document.body.style.overflow=view.state.previewOpen?'hidden':'';
+    if(view.state.previewOpen && dialog && !dialog.open)dialog.showModal();
   },
 );
+view.refs={previewDialog:{current:null}};
+const setSavedConfig=value=>view.set("savedConfig",value);
+const setPaymentSetup=value=>view.set("paymentSetup",value);
+const setPreviewOpen=value=>view.set("previewOpen",value);
 const setAuthorized = (value) => view.set("authorized", value);
 const setConfigured = (value) => view.set("configured", value);
 const setLoading = (value) => view.set("loading", value);
@@ -948,4 +985,7 @@ const setBusy = (value) => view.set("busy", value);
 const setPost = (value) => view.set("post", value);
 const setPublicConsent = (value) => view.set("publicConsent", value);
 const setUploadKind = (value) => view.set("uploadKind", value);
+window.addEventListener('beforeunload',event=>{
+  if(view.state.authorized && (hasChanges(view.state.config,view.state.savedConfig)||hasPostDraft(view.state.post))){event.preventDefault();event.returnValue='';}
+});
 view.render();

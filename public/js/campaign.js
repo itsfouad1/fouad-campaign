@@ -1,4 +1,6 @@
 import { h, Fragment, icon, mount } from "./dom.js";
+import { previewConfig } from "./admin-tools.js";
+const isPreview=new URLSearchParams(location.search).get("preview")==="1";
 const ArrowUpLeft = icon("ArrowUpLeft"),
   ArrowUpRight = icon("ArrowUpRight"),
   Check = icon("Check"),
@@ -96,10 +98,12 @@ function Campaign() {
     } catch {}
   }
   function openSupport() {
+    if(isPreview){notify(t("المعاينة فقط؛ الدفع غير متاح هنا.","Preview only; payments are disabled here."));return;}
     setModal(true);
     setError("");
   }
   async function checkout() {
+    if(isPreview)return;
     setError("");
     if (!consent) {
       setError(
@@ -149,11 +153,12 @@ function Campaign() {
   ];
   if (!view.initialized) {
     view.initialized = true;
-    queueMicrotask(load);
+    if(!isPreview)queueMicrotask(load);
   }
   return /* @__PURE__ */ h(
     Fragment,
     null,
+    isPreview && h('div',{className:'preview-banner',role:'status'},t('معاينة غير منشورة — لن تُحفظ التعديلات أو تُستقبل دفعات هنا.','Unpublished preview — changes are not saved and payments are disabled.')),
     /* @__PURE__ */ h(
       "header",
       { className: "site-header" },
@@ -1368,4 +1373,11 @@ function afterRender() {
         .catch(() => {});
   }
 }
+window.addEventListener('message',event=>{
+  if(!isPreview||window.parent===window||event.origin!==location.origin||event.source!==window.parent||event.data?.type!=='campaign-preview')return;
+  setConfig(previewConfig(event.data.config));
+  const total=event.data.total;
+  if(Number.isSafeInteger(total?.amount)&&total.amount>=0&&Number.isSafeInteger(total?.count)&&total.count>=0)setTotal({amount:total.amount,count:total.count});
+  setReady(false);setLoaded(true);
+});
 view.render();
